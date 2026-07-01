@@ -1,0 +1,21 @@
+# Environment / secrets
+.env
+.env.*
+
+# Go build artifacts
+bootstrap
+*.exe
+
+# Lambda deployment artifacts
+*.zip
+
+# Temp policy files created by scripts
+lambda-trust-policy.json
+lambda-role-management-policy.json
+
+# Temp invoke output
+output.json
+
+# OS
+.DS_Store
+Thumbs.db
