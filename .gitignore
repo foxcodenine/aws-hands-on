@@ -16,6 +16,14 @@ lambda-role-management-policy.json
 # Temp invoke output
 output.json
 
+# Terraform local files
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!*.tfvars.example
+
 # OS
 .DS_Store
 Thumbs.db

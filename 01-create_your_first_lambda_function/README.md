@@ -2,6 +2,8 @@
 
 A simple rectangle area calculator (`length × width`) deployed as a Lambda function. The same logic is implemented in three runtimes to compare how each one works.
 
+I followed the [AWS Lambda getting started tutorial](https://docs.aws.amazon.com/lambda/latest/dg/getting-started.html), which covers Python and Node.js, then recreated the function in Go.
+
 ## What I built
 
 The function takes a JSON payload like `{"length": 5, "width": 3}`, calculates the area, and returns `{"area": 15}`. Nothing clever — the point was to learn the deployment pipeline, not the business logic.
