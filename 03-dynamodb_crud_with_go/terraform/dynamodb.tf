@@ -30,6 +30,11 @@ resource "aws_dynamodb_table" "users" {
     type = "S"
   }
 
+  attribute {
+    name = "email"
+    type = "S"
+  }
+
   # Global Secondary Index: lets you query by "status" without a full
   # table Scan, same as the QueryByStatus function in the Go repo.
   # Note: "status" is low-cardinality (most users likely "active"), so
@@ -42,6 +47,19 @@ resource "aws_dynamodb_table" "users" {
 
     # ALL = copy every item attribute into the index, so a query against
     # this GSI doesn't need a round-trip back to the main table.
+    projection_type = "ALL"
+
+    read_capacity  = local.gsi_read_capacity
+    write_capacity = local.gsi_write_capacity
+  }
+
+  # Global Secondary Index: lets the application look up users by email.
+  # A GSI does not enforce uniqueness; that requires application-level
+  # conditional writes or a transaction.
+  global_secondary_index {
+    name     = "email-index"
+    hash_key = "email"
+
     projection_type = "ALL"
 
     read_capacity  = local.gsi_read_capacity

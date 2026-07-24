@@ -25,6 +25,11 @@ output "gsi_name" {
   value       = "status-index"
 }
 
+output "email_gsi_name" {
+  description = "Name of the email Global Secondary Index; email uniqueness is enforced by application logic, not DynamoDB"
+  value       = "email-index"
+}
+
 output "region" {
   description = "AWS region the table was deployed into"
   value       = data.aws_region.current.region

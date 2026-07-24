@@ -7,6 +7,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
 // fakeDynamo implements DynamoDBAPI. Each method just calls the func field the
@@ -14,6 +15,8 @@ import (
 type fakeDynamo struct {
 	putItem func(*dynamodb.PutItemInput) (*dynamodb.PutItemOutput, error)
 	getItem func(*dynamodb.GetItemInput) (*dynamodb.GetItemOutput, error)
+	query   func(*dynamodb.QueryInput) (*dynamodb.QueryOutput, error)
+	scan    func(*dynamodb.ScanInput) (*dynamodb.ScanOutput, error)
 }
 
 func (f *fakeDynamo) PutItem(_ context.Context, in *dynamodb.PutItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.PutItemOutput, error) {
@@ -31,8 +34,11 @@ func (f *fakeDynamo) UpdateItem(context.Context, *dynamodb.UpdateItemInput, ...f
 func (f *fakeDynamo) DeleteItem(context.Context, *dynamodb.DeleteItemInput, ...func(*dynamodb.Options)) (*dynamodb.DeleteItemOutput, error) {
 	return nil, nil
 }
-func (f *fakeDynamo) Query(context.Context, *dynamodb.QueryInput, ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
-	return nil, nil
+func (f *fakeDynamo) Query(_ context.Context, in *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
+	return f.query(in)
+}
+func (f *fakeDynamo) Scan(_ context.Context, in *dynamodb.ScanInput, _ ...func(*dynamodb.Options)) (*dynamodb.ScanOutput, error) {
+	return f.scan(in)
 }
 
 func TestCreate(t *testing.T) {
@@ -122,6 +128,93 @@ func TestGetByID(t *testing.T) {
 			t.Errorf("Name = %q, want %q", user.Name, "Grace")
 		}
 	})
+}
+
+func TestQueryByEmailUsesEmailIndex(t *testing.T) {
+	item, _ := attributevalue.MarshalMap(models.User{
+		UserID: "user-123",
+		Email:  "ada@example.com",
+	})
+	var captured *dynamodb.QueryInput
+	fake := &fakeDynamo{
+		query: func(in *dynamodb.QueryInput) (*dynamodb.QueryOutput, error) {
+			captured = in
+			return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{item}}, nil
+		},
+	}
+	repo := NewUserRepository(fake)
+
+	users, err := repo.QueryByEmail(context.Background(), "ada@example.com")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if captured == nil {
+		t.Fatal("Query was not called")
+	}
+	if captured.IndexName == nil || *captured.IndexName != "email-index" {
+		t.Fatalf("IndexName = %v, want email-index", captured.IndexName)
+	}
+	if len(users) != 1 || users[0].Email != "ada@example.com" {
+		t.Errorf("users = %+v, want one matching user", users)
+	}
+}
+
+func TestQueryByEmailReturnsDuplicateResults(t *testing.T) {
+	first, _ := attributevalue.MarshalMap(models.User{UserID: "user-1", Email: "same@example.com"})
+	second, _ := attributevalue.MarshalMap(models.User{UserID: "user-2", Email: "same@example.com"})
+	fake := &fakeDynamo{
+		query: func(*dynamodb.QueryInput) (*dynamodb.QueryOutput, error) {
+			return &dynamodb.QueryOutput{Items: []map[string]types.AttributeValue{first, second}}, nil
+		},
+	}
+	repo := NewUserRepository(fake)
+
+	users, err := repo.QueryByEmail(context.Background(), "same@example.com")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(users) != 2 {
+		t.Fatalf("got %d users, want 2 duplicate results", len(users))
+	}
+}
+
+func TestListAllCombinesScanPages(t *testing.T) {
+	first, _ := attributevalue.MarshalMap(models.User{UserID: "user-1", Name: "Ada"})
+	second, _ := attributevalue.MarshalMap(models.User{UserID: "user-2", Name: "Grace"})
+	startKey := map[string]types.AttributeValue{
+		"user_id": &types.AttributeValueMemberS{Value: "user-1"},
+	}
+	var calls []*dynamodb.ScanInput
+	fake := &fakeDynamo{
+		scan: func(in *dynamodb.ScanInput) (*dynamodb.ScanOutput, error) {
+			calls = append(calls, in)
+			if len(calls) == 1 {
+				return &dynamodb.ScanOutput{
+					Items:            []map[string]types.AttributeValue{first},
+					LastEvaluatedKey: startKey,
+				}, nil
+			}
+			return &dynamodb.ScanOutput{Items: []map[string]types.AttributeValue{second}}, nil
+		},
+	}
+	repo := NewUserRepository(fake)
+
+	users, err := repo.ListAll(context.Background())
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(calls) != 2 {
+		t.Fatalf("scan calls = %d, want 2", len(calls))
+	}
+	if len(calls[1].ExclusiveStartKey) != 1 {
+		t.Fatalf("second scan did not use the first page key")
+	}
+	if len(users) != 2 {
+		t.Fatalf("users = %+v, want 2 users", users)
+	}
 }
 
 // Compile-time proof the fake stays in sync with the interface.

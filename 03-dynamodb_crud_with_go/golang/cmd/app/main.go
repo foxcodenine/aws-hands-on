@@ -1,14 +1,21 @@
 package main
 
 import (
+	apptypes "03-dynamodb_crud_with_go/internal/app"
 	"03-dynamodb_crud_with_go/internal/db"
-	"03-dynamodb_crud_with_go/internal/models"
+	"03-dynamodb_crud_with_go/internal/httpserver"
 	"03-dynamodb_crud_with_go/internal/repository"
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 )
+
+var app apptypes.App
 
 func main() {
 
@@ -16,7 +23,6 @@ func main() {
 }
 
 func run(out io.Writer) {
-
 	err := loadEnv(envPath)
 
 	if err != nil {
@@ -25,60 +31,49 @@ func run(out io.Writer) {
 
 	// -----------------------------------------------------------------
 
-	ctx := context.Background()
+	client := db.NewClient(out, context.Background())
+	app.Repo = repository.NewRepository(client)
 
-	// Initialize the DynamoDB client
-	client := db.NewClient(os.Stdout, ctx)
-	userRepo := repository.NewUserRepository(client)
+	// -----------------------------------------------------------------
+	// Create a context that will be cancelled when an interrupt or termination signal is received.
 
-	// ---------------------------------------------
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 
-	// Create a user
-	user, err := createUser(ctx, userRepo, "Alice Johnson", "alice@example.com")
-	if err != nil {
-		fmt.Fprintf(out, "create failed: %v", err)
-		os.Exit(1)
+	// stop() will stop the context from listening for further OS signals
+	defer stop()
+
+	// -----------------------------------------------------------------
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
 	}
 
-	fmt.Fprintf(out, "Created user: %s\n", user.UserID)
+	server := httpserver.NewHttpServer(port, app)
+	fmt.Fprintf(out, "HTTP server listening on %s\n", server.HTTPServer.Addr)
 
-	// ---------------------------------------------
+	go func() {
+		err := server.HTTPServer.ListenAndServe()
+		if err != nil && err != http.ErrServerClosed {
+			fmt.Fprintf(out, "server failed: %v\n", err)
+		}
+	}()
 
-	// Read the user back
-	found, err := userRepo.GetByID(ctx, user.UserID)
+	// Wait for an OS signal before shutting down gracefully.
+	<-ctx.Done()
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = server.Shutdown(shutdownCtx)
 
 	if err != nil {
-		fmt.Fprintf(out, "get failed: %v", err)
-		os.Exit(1)
+		fmt.Fprintf(out, "shutdown failed: %v\n", err)
+
+		closeErr := server.HTTPServer.Close()
+
+		if closeErr != nil {
+			fmt.Fprintf(out, "forced shutdown failed: %v\n", closeErr)
+		}
 	}
-
-	fmt.Fprintf(out, "Found user: %s (%s)\n", found.Name, found.Email)
-
-	// ---------------------------------------------
-
-	// Query by status
-	activeUsers, err := userRepo.QueryByStatus(ctx, "active", 10)
-	if err != nil {
-		fmt.Fprintf(out, "query failed: %v", err)
-		os.Exit(1)
-	}
-
-	fmt.Fprintf(out, "Found %d active users\n", len(activeUsers))
-
-}
-
-func createUser(
-	ctx context.Context,
-	userRepo *repository.UserRepository,
-	name string,
-	email string,
-) (*models.User, error) {
-
-	user, err := userRepo.Create(ctx, models.CreateUserInput{
-		Name:  name,
-		Email: email,
-		Tags:  []string{"admin", "beta-tester"},
-	})
-
-	return user, err
 }

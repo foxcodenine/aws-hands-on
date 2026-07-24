@@ -26,6 +26,7 @@ type DynamoDBAPI interface {
 	UpdateItem(ctx context.Context, params *dynamodb.UpdateItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error)
 	DeleteItem(ctx context.Context, params *dynamodb.DeleteItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.DeleteItemOutput, error)
 	Query(ctx context.Context, params *dynamodb.QueryInput, optFns ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error)
+	Scan(ctx context.Context, params *dynamodb.ScanInput, optFns ...func(*dynamodb.Options)) (*dynamodb.ScanOutput, error)
 }
 
 // UserRepository handles DynamoDB operations for users.
@@ -121,6 +122,38 @@ func (r *UserRepository) GetByID(ctx context.Context, userID string) (*models.Us
 	}
 
 	return &user, nil
+}
+
+// QueryByEmail finds users with a matching email address.
+func (r *UserRepository) QueryByEmail(ctx context.Context, email string) ([]models.User, error) {
+	keyCond := expression.KeyEqual(
+		expression.Key("email"), expression.Value(email),
+	)
+
+	expr, err := expression.NewBuilder().
+		WithKeyCondition(keyCond).
+		Build()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build email expression: %w", err)
+	}
+
+	result, err := r.client.Query(ctx, &dynamodb.QueryInput{
+		TableName:                 aws.String(tableName),
+		IndexName:                 aws.String("email-index"),
+		KeyConditionExpression:    expr.KeyCondition(),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to query by email: %w", err)
+	}
+
+	var users []models.User
+	if err := attributevalue.UnmarshalListOfMaps(result.Items, &users); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal email results: %w", err)
+	}
+
+	return users, nil
 }
 
 // -----------------------------------------------------------------------------
@@ -267,5 +300,32 @@ func (r *UserRepository) QueryByStatus(ctx context.Context, status string, limit
 		return nil, fmt.Errorf("failed to unmarshal results: %w", err)
 	}
 
+	return users, nil
+}
+
+// ListAll returns all users in the table.
+func (r *UserRepository) ListAll(ctx context.Context) ([]models.User, error) {
+	input := &dynamodb.ScanInput{
+		TableName: aws.String(tableName),
+	}
+
+	var items []map[string]types.AttributeValue
+	for {
+		result, err := r.client.Scan(ctx, input)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan users: %w", err)
+		}
+
+		items = append(items, result.Items...)
+		if len(result.LastEvaluatedKey) == 0 {
+			break
+		}
+		input.ExclusiveStartKey = result.LastEvaluatedKey
+	}
+
+	var users []models.User
+	if err := attributevalue.UnmarshalListOfMaps(items, &users); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal users: %w", err)
+	}
 	return users, nil
 }
