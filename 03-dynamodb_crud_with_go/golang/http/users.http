@@ -1,0 +1,61 @@
+@baseUrl = http://localhost:8080
+
+### Create a user
+POST {{baseUrl}}/users/
+Content-Type: application/json
+
+{
+  "name": "Jane Doe",
+  "email": "jane@example.com",
+  "age": 29
+}
+
+### Create a user - duplicate email (expect 409)
+POST {{baseUrl}}/users/
+Content-Type: application/json
+
+{
+  "name": "Jane Clone",
+  "email": "jane@example.com",
+  "age": 30
+}
+
+### List all users
+GET {{baseUrl}}/users/
+
+### List active users (uses status-index)
+GET {{baseUrl}}/users/active
+
+### List active users with a limit
+GET {{baseUrl}}/users/active?limit=5
+
+### Find a user by email (uses email-index)
+GET {{baseUrl}}/users/by-email?email=christopherfarrugia@example.com
+
+### Get one user by ID - replace with a real user_id from a Create/List response
+GET {{baseUrl}}/users/74555769-587b-49a6-a22d-3d53d736fe8d
+
+### Ucreate a user
+POST {{baseUrl}}/users
+Content-Type: application/json
+
+{
+  "name": "Fitra Apriliningtyas",
+  "email": "fitra@example.com",
+  "age": 35
+}
+
+### Update a user
+PUT {{baseUrl}}/users/74555769-587b-49a6-a22d-3d53d736fe8d
+Content-Type: application/json
+
+{
+  "name": "Christopher Farrugia",
+  "email": "christopherfarrugia@example.com"
+}
+
+### Delete a user
+DELETE {{baseUrl}}/users/74555769-587b-49a6-a22d-3d53d736fe8d
+
+### Get a user that doesn't exist (expect 404)
+GET {{baseUrl}}/users/does-not-exist
