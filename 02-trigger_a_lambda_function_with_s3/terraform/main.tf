@@ -25,7 +25,7 @@ resource "aws_s3_bucket_versioning" "hands_on" {
 # "folder" placeholder — S3 has no real directories, this just makes one show up in the console.
 resource "aws_s3_object" "trigger_dir" {
   bucket = aws_s3_bucket.hands_on.id
-  key    = "${var.lesson}/"
+  key    = "${var.prefix}${var.lesson}/"
 }
 
 resource "aws_s3_object" "test_upload" {
@@ -54,7 +54,7 @@ output "lambda_trigger_bucket" {
 
 # What the role is ALLOWED TO DO once AWS lets it act (identity-based permissions).
 resource "aws_iam_policy" "s3_trigger" {
-  name = "${var.lesson}-policy"
+  name = "${var.prefix}${var.lesson}-policy"
 
   policy = jsonencode({
     "Version" : "2012-10-17",
@@ -91,7 +91,7 @@ resource "aws_iam_policy" "s3_trigger" {
 # WHO is allowed to assume this role (trust policy) — different from the policy above,
 # which says what the role can do once assumed.
 resource "aws_iam_role" "ns3_trigger" {
-  name = "${var.lesson}-role"
+  name = "${var.prefix}${var.lesson}-role"
   assume_role_policy = jsonencode({
     "Version" : "2012-10-17",
     "Statement" : [
@@ -124,7 +124,7 @@ data "archive_file" "s3_trigger" {
 }
 
 resource "aws_lambda_function" "s3_trigger" {
-  function_name = "${var.lesson}-function"
+  function_name = "${var.prefix}${var.lesson}-function"
   role          = aws_iam_role.ns3_trigger.arn
   handler       = "bootstrap"
   runtime       = "provided.al2023"
@@ -161,7 +161,7 @@ resource "aws_s3_bucket_notification" "s3_trigger" {
   lambda_function {
     lambda_function_arn = aws_lambda_function.s3_trigger.arn
     events              = ["s3:ObjectCreated:*"]
-    filter_prefix       = "${var.lesson}/"
+    filter_prefix       = "${var.prefix}${var.lesson}/"
   }
 
   depends_on = [aws_lambda_permission.allow_s3]

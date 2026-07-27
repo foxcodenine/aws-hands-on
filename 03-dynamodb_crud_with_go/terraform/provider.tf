@@ -26,7 +26,7 @@ provider "aws" {
   default_tags {
     tags = {
       Project     = "aws-hands-on"
-      Tutorial    = "03-connect_a_lambda_function_to_dynamodb"
+      Tutorial    = var.lesson
       Environment = "learning"
     }
   }

@@ -1,0 +1,95 @@
+@baseUrl = https://5rsbluc2b5.execute-api.eu-west-1.amazonaws.com/test
+
+### Echo - confirms the API/Lambda wiring works, no DynamoDB involved
+POST {{baseUrl}}/DynamoDBManager
+Content-Type: application/json
+
+{
+  "operation": "echo",
+  "payload": {
+    "somekey1": "somevalue1",
+    "somekey2": "somevalue2"
+  }
+}
+
+### Create an item
+POST {{baseUrl}}/DynamoDBManager
+Content-Type: application/json
+
+{
+  "operation": "create",
+  "payload": {
+    "Item": {
+      "id": "1234ABCD",
+      "number": 5
+    }
+  }
+}
+
+### Read the item back
+POST {{baseUrl}}/DynamoDBManager
+Content-Type: application/json
+
+{
+  "operation": "read",
+  "payload": {
+    "Key": {
+      "id": "1234ABCD"
+    }
+  }
+}
+
+### Update the item's "number" field
+POST {{baseUrl}}/DynamoDBManager
+Content-Type: application/json
+
+{
+  "operation": "update",
+  "payload": {
+    "Key": {
+      "id": "1234ABCD"
+    },
+    "UpdateExpression": "SET #num = :newNum",
+    "ExpressionAttributeNames": {
+      "#num": "number"
+    },
+    "ExpressionAttributeValues": {
+      ":newNum": 10
+    }
+  }
+}
+
+### Read again - confirm the update took effect
+POST {{baseUrl}}/DynamoDBManager
+Content-Type: application/json
+
+{
+  "operation": "read",
+  "payload": {
+    "Key": {
+      "id": "1234ABCD"
+    }
+  }
+}
+
+### Delete the item
+POST {{baseUrl}}/DynamoDBManager
+Content-Type: application/json
+
+{
+  "operation": "delete",
+  "payload": {
+    "Key": {
+      "id": "1234ABCD"
+    }
+  }
+}
+
+### Unrecognized operation - expect a 400
+POST {{baseUrl}}/DynamoDBManager
+Content-Type: application/json
+
+{
+  "operation": "not-a-real-operation",
+  "payload": {}
+}

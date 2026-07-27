@@ -1,3 +1,14 @@
+variable "lesson" {
+  type    = string
+  default = "03-dynamodb_crud_with_go"
+}
+
+variable "prefix" {
+  type    = string
+  default = "aws-hands-on-"
+}
+
+# ----------------------------------------------------------------------
 variable "aws_region" {
   description = "AWS region to deploy the DynamoDB table into"
   type        = string

@@ -6,9 +6,10 @@ A collection of hands-on AWS tutorials, one numbered folder per topic.
 
 | # | Topic | Runtimes |
 |---|-------|----------|
-| 01 | [Create your first Lambda function](./01-create_your_first_lambda_function/) | [Python](./01-create_your_first_lambda_function/python/) · [Node](./01-create_your_first_lambda_function/node/) · [Go](./01-create_your_first_lambda_function/golang/) |
-| 02 | [Trigger a Lambda function with S3](./02-trigger_a_lambda_function_with_s3/) | [Python](./02-trigger_a_lambda_function_with_s3/python/) · [Node](./02-trigger_a_lambda_function_with_s3/node/) · [Go](./02-trigger_a_lambda_function_with_s3/golang/) · [Terraform](./02-trigger_a_lambda_function_with_s3/terraform/) |
-| 03 | [DynamoDB CRUD with Go](./03-dynamodb_crud_with_go/) | [Go](./03-dynamodb_crud_with_go/golang/) · [Terraform](./03-dynamodb_crud_with_go/terraform/) |
+| 01 | [Create your first Lambda function](https://docs.aws.amazon.com/lambda/latest/dg/getting-started.html) | [Python](./01-create_your_first_lambda_function/python/) · [Node](./01-create_your_first_lambda_function/node/) · [Go](./01-create_your_first_lambda_function/golang/) |
+| 02 | [Trigger a Lambda function with S3](https://docs.aws.amazon.com/lambda/latest/dg/with-s3-example.html) | [Python](./02-trigger_a_lambda_function_with_s3/python/) · [Node](./02-trigger_a_lambda_function_with_s3/node/) · [Go](./02-trigger_a_lambda_function_with_s3/golang/) · [Terraform](./02-trigger_a_lambda_function_with_s3/terraform/) |
+| 03 | [DynamoDB CRUD with Go](https://oneuptime.com/blog/post/2026-02-12-use-dynamodb-with-go/view) | [Go](./03-dynamodb_crud_with_go/golang/) · [Terraform](./03-dynamodb_crud_with_go/terraform/) |
+| 04 | [Invoke a Lambda function with API Gateway](https://docs.aws.amazon.com/lambda/latest/dg/services-apigateway-tutorial.html) | [Python](./04-invoke_a_lambda_function_with_api_gateway/python/) · [Node](./04-invoke_a_lambda_function_with_api_gateway/node/) · [Go](./04-invoke_a_lambda_function_with_api_gateway/golang/) · [Terraform](./04-invoke_a_lambda_function_with_api_gateway/terraform/) |
 
 ## Structure
 
