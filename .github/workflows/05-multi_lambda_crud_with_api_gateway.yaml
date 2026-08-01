@@ -50,3 +50,27 @@ jobs:
         run: cd build && tree
 
         
+  terraform:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: 05-multi_lambda_crud_with_api_gateway/terraform
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3 
+
+      - name: Check formatting
+        run: terraform fmt -check
+
+      # -backend=false skips state entirely - this only downloads providers
+      # so validate has schemas to check against.
+      - name: Init
+        run: terraform init -backend=false
+
+      - name: Validate
+        run: terraform validate
