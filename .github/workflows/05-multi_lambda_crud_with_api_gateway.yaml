@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+
+name: 05-multi_lambda_crud_with_api_gateway
+
+on: workflow_dispatch
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: 05-multi_lambda_crud_with_api_gateway/golang
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Printing Folder
+        run: ls
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test ./... -race -cover -v
+
+      - name: Build
+        run: ./build.sh
+
+        
