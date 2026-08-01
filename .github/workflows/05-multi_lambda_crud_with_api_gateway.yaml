@@ -2,7 +2,12 @@
 
 name: 05-multi_lambda_crud_with_api_gateway
 
-on: workflow_dispatch
+on: 
+  workflow_dispatch:                
+  push:
+    paths:
+      - '05-multi_lambda_crud_with_api_gateway/**'
+      - '.github/workflows/05-multi_lambda_crud_with_api_gateway.yaml'
 
 jobs:
   build:
@@ -22,12 +27,26 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          go-version-file: 05-multi_lambda_crud_with_api_gateway/golang/go.mod
+
+      # Catches mistakes the compiler allows: wrong Printf verbs, ignored
+      # results, struct tags that do not parse.
+      - name: Vet
+        run: go vet ./...
+
+      # gofmt -l lists unformatted files but always exits 0, so it can never
+      # fail a build on its own. test -z fails when that list is not empty,
+      # and the || branch re-runs it so the log names the offending files.
+      - name: Check formatting
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
 
       - name: Test
         run: go test ./... -race -cover -v
 
       - name: Build
         run: ./build.sh
+
+      - name: Check build
+        run: ls -R build
 
         
