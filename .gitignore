@@ -4,6 +4,7 @@
 
 # Go build artifacts
 bootstrap
+build/
 *.exe
 
 # Lambda deployment artifacts

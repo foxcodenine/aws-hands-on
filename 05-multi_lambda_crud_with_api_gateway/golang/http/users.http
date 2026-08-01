@@ -1,0 +1,98 @@
+@baseUrl = https://98hnnww3eb.execute-api.eu-west-1.amazonaws.com/test
+
+# Paste a real user_id here after running the create request below.
+@userID = 1f3e712f-2954-49aa-b7ff-5cbd37efc795
+
+# ----------------------------------------------------------------------------------------------------------------------
+### Echo - checks API Gateway reaches a Lambda at all, without touching DynamoDB
+POST {{baseUrl}}/echo
+Content-Type: application/json
+
+{
+  "hello": "world"
+}
+
+# ----------------------------------------------------------------------------------------------------------------------
+### Create a user - copy the user_id from the response into @userID at the top
+POST {{baseUrl}}/users
+Content-Type: application/json
+
+{
+  "name": "Ada Lovelace",
+  "email": "ada@example.com",
+  "age": 36
+}
+
+# ----------------------------------------------------------------------------------------------------------------------
+### Create with the same email again - expect 409
+POST {{baseUrl}}/users
+Content-Type: application/json
+
+{
+  "name": "Ada Clone",
+  "email": "ada@example.com",
+  "age": 40
+}
+
+# ----------------------------------------------------------------------------------------------------------------------
+### Create with a missing name - expect 400
+POST {{baseUrl}}/users
+Content-Type: application/json
+
+{
+  "name": "",
+  "email": "nobody@example.com",
+  "age": 20
+}
+
+# ----------------------------------------------------------------------------------------------------------------------
+### List users - default page size is 25
+GET {{baseUrl}}/users
+
+# ----------------------------------------------------------------------------------------------------------------------
+### List with a page size, to see next_cursor appear
+GET {{baseUrl}}/users?limit=1
+
+# ----------------------------------------------------------------------------------------------------------------------
+### Next page - paste the next_cursor from the response above
+GET {{baseUrl}}/users?limit=1&cursor=1f3e712f-2954-49aa-b7ff-5cbd37efc795
+
+# ----------------------------------------------------------------------------------------------------------------------
+### Bad page size - expect 400
+GET {{baseUrl}}/users?limit=999
+
+# ----------------------------------------------------------------------------------------------------------------------
+### Get one user
+GET {{baseUrl}}/users/{{userID}}
+
+# ----------------------------------------------------------------------------------------------------------------------
+### Get a user that does not exist - expect 404
+GET {{baseUrl}}/users/does-not-exist
+
+# ----------------------------------------------------------------------------------------------------------------------
+### Update a user
+PUT {{baseUrl}}/users/{{userID}}
+Content-Type: application/json
+
+{
+  "name": "Ada King",
+  "email": "ada.king@example.com"
+}
+
+# ----------------------------------------------------------------------------------------------------------------------
+### Update a user that does not exist - expect 404
+PUT {{baseUrl}}/users/does-not-exist
+Content-Type: application/json
+
+{
+  "name": "Nobody",
+  "email": "nobody@example.com"
+}
+
+# ----------------------------------------------------------------------------------------------------------------------
+### Delete a user - expect 204 with no body
+DELETE {{baseUrl}}/users/{{userID}}
+
+# ----------------------------------------------------------------------------------------------------------------------
+### Delete it again - expect 404
+DELETE {{baseUrl}}/users/{{userID}}
