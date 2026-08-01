@@ -47,6 +47,6 @@ jobs:
         run: ./build.sh
 
       - name: Check build
-        run: ls -R build
+        run: tree
 
         
