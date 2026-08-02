@@ -50,8 +50,27 @@ jobs:
         run: cd build && tree
 
         
-  terraform:
+  terraform-plan:
     runs-on: ubuntu-latest
+
+   
+    # Allow this job to create an OIDC token and read the repository
+    #
+    # id-token: write allows GitHub to create the temporary identity token that
+    # AWS uses to verify the repository and give the job temporary AWS credentials.
+
+    #       GitHub workflow
+    #             ↓ creates OIDC token
+    #       AWS checks the token
+    #             ↓
+    #       AWS returns temporary credentials
+    
+    # contents: read allows actions/checkout to download the repository code.
+
+
+    permissions:
+      id-token: write
+      contents: read
 
     defaults:
       run:
@@ -61,16 +80,30 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
+      # plan evaluates data "archive_file", which reads golang/build/<fn>/bootstrap.
+      # A fresh runner has no build folder, so the binaries have to exist first.
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: 05-multi_lambda_crud_with_api_gateway/golang/go.mod
+
+      - name: Build binaries
+        run: ./build.sh
+        working-directory: 05-multi_lambda_crud_with_api_gateway/golang
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::725211237961:role/aws-hands-on-github-actions
+          aws-region: eu-west-1
+
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3 
+        uses: hashicorp/setup-terraform@v3
 
-      - name: Check formatting
-        run: terraform fmt -check
-
-      # -backend=false skips state entirely - this only downloads providers
-      # so validate has schemas to check against.
+      # Note: no -backend=false here, unlike the validate job. plan needs the
+      # real state out of S3.
       - name: Init
-        run: terraform init -backend=false
+        run: terraform init
 
-      - name: Validate
-        run: terraform validate
+      - name: Plan
+        run: terraform plan -no-color

@@ -7,11 +7,19 @@ terraform {
       version = "~> 6.0"
     }
   }
+
+  backend "s3" {
+    bucket       = "aws-hands-on-tfstate-725211237961"
+    key          = "05-multi_lambda_crud_with_api_gateway/terraform.tfstate"
+    region       = "eu-west-1"
+    # profile      = "developer"
+    use_lockfile = true
+  }
 }
 
 provider "aws" {
   region  = "eu-west-1"
-  profile = "developer"
+  # profile = "developer"
 
   default_tags {
     tags = {

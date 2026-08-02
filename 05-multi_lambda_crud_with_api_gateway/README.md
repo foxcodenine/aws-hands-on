@@ -80,8 +80,64 @@ The tests cover the parts most likely to break quietly: a missing item returning
 
 ## What tripped me up
 
-- **A 403 `Missing Authentication Token` means the route does not exist**, not that auth is needed. I had called `/test/test` — the `/test` in the URL is the *stage* name, not a path.
-- **`terraform apply` does not compile Go.** I edited the Go source, applied, and got "no changes" — the old binary stayed live and kept querying a table that no longer existed. `source_code_hash` only notices when the zip changes, and the zip only changes after `build.sh` runs.
-- **The handlers swallow the underlying error.** A `500 {"error":"failed to check email"}` left nothing in CloudWatch but `START`/`END`, so the cause had to be found from the outside. Logging `err` before returning the generic message would have named it immediately.
-- **`PUT` on a missing user returns 500, not 404.** The repository's `attribute_exists` guard makes DynamoDB reject the write as an *error*, so the handler's `user == nil` branch never runs. Still to fix.
-- In a `.http` file, a request body runs until the next `###` — a `@variable` defined underneath one gets swallowed into the body and breaks the JSON.
+### `403 Missing Authentication Token` means the route does not exist
+
+Nothing to do with authentication, even though every method here uses
+`authorization = "NONE"`. API Gateway returns this for *any* path it cannot
+match. I had requested `/test/test`, because I forgot the `/test` already in the
+base URL is the **stage name**, not part of the path.
+
+Rule of thumb: 403 means the route is wrong, 500 means the route was found and
+something behind it failed.
+
+### `terraform apply` does not compile Go
+
+I changed the Go source, ran `apply`, and got "no changes". The old binary stayed
+live, still querying a table that no longer existed.
+
+Terraform only zips what is already on disk. `source_code_hash` notices when the
+*zip* changes, and the zip only changes once `build.sh` has run. So the order is
+always `./build.sh` first, `terraform apply` second.
+
+### The handlers throw away the real error
+
+A `500 {"error":"failed to check email"}` left nothing in CloudWatch but
+`START`/`END`/`REPORT`, so the cause had to be worked out from the outside.
+
+The handler returns a generic message — which is right, callers should not see
+internals — but it never logs `err` first, so the detail is lost entirely. One
+`log.Printf` before each error response would have named the problem straight
+away.
+
+### `PUT` on a missing user returns 500, not 404
+
+The repository guards `UpdateItem` with `attribute_exists(user_id)`. When the
+user does not exist, DynamoDB rejects the write with
+`ConditionalCheckFailedException` — an **error**, not an empty result. So the
+handler takes its `err != nil` branch and returns 500, and the `user == nil`
+branch that would return 404 is unreachable.
+
+`DELETE` does not have this problem: it genuinely returns `(nil, nil)` when there
+was nothing to delete. Still to fix.
+
+### In a `.http` file, the body runs until the next `###`
+
+I put a variable directly under a request and the request stopped working. The
+reason is that everything after the blank line, all the way to the next `###`,
+counts as the body:
+
+```
+POST {{baseUrl}}/users
+Content-Type: application/json
+                              <- blank line: headers end, body starts
+{
+  "name": "Ada Lovelace"
+}
+@userID = abc-123             <- still the body, not a variable
+                              
+### Next request              <- only here does the body end
+```
+
+So the Lambda received the JSON *plus* `@userID = abc-123` stuck on the end,
+which is not valid JSON — hence `400 invalid JSON`. Variables have to go at the
+top of the file, above every request.

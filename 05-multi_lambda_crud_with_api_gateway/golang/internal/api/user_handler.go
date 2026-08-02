@@ -5,7 +5,7 @@
 //
 //	json.NewDecoder(r.Body).Decode(&x)  ->  json.Unmarshal([]byte(req.Body), &x)
 //	chi.URLParam(r, "userID")           ->  req.PathParameters["userID"]
-//	w.WriteHeader(200); Encode(x)       ->  return respond(200, x)
+//	w.WriteHeader(200); Encode(x)       ->  return respond(http.StatusOK, x)
 //
 // The DynamoDB work still lives in the repository, exactly as in tutorial 03.
 package api
@@ -16,10 +16,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/aws/aws-lambda-go/events"
+	"github.com/aws/aws-lambda-go/lambdacontext"
 )
 
 // Page size bounds for List. A cap matters here because Lambda can only return
@@ -59,22 +62,23 @@ func (h *UserHandler) Create(ctx context.Context, req events.APIGatewayProxyRequ
 	// Step 2: decode. API Gateway hands the body over as a plain string.
 	err := json.Unmarshal([]byte(req.Body), &body)
 	if err != nil {
-		return respond(400, map[string]string{"error": "invalid JSON"})
+		return reject(ctx, http.StatusBadRequest, "invalid JSON")
 	}
 
 	// Step 3: validate before touching the database.
 	if strings.TrimSpace(body.Name) == "" || strings.TrimSpace(body.Email) == "" || body.Age < 0 {
-		return respond(400, map[string]string{"error": "name, email, and a non-negative age are required"})
+		return reject(ctx, http.StatusBadRequest, "name, email, and a non-negative age are required")
 	}
 
 	// Step 4: reject duplicate emails. Read-then-write, so simultaneous requests
 	// can still slip through - a GSI can't enforce uniqueness on its own.
 	users, err := h.Repo.User.QueryByEmail(ctx, strings.TrimSpace(body.Email))
 	if err != nil {
-		return respond(500, map[string]string{"error": "failed to check email"})
+		return fail(ctx, http.StatusInternalServerError, "failed to check email", err)
 	}
+
 	if len(users) > 0 {
-		return respond(409, map[string]string{"error": "email is already in use"})
+		return reject(ctx, http.StatusConflict, "email is already in use")
 	}
 
 	// Step 5: the repository does the actual PutItem.
@@ -84,11 +88,11 @@ func (h *UserHandler) Create(ctx context.Context, req events.APIGatewayProxyRequ
 		Age:   int(body.Age),
 	})
 	if err != nil {
-		return respond(500, map[string]string{"error": "failed to create user"})
+		return fail(ctx, http.StatusInternalServerError, "failed to create user", err)
 	}
 
 	// Step 6: return the stored record, so the caller learns the generated ID.
-	return respond(201, user)
+	return respond(http.StatusCreated, user)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -107,16 +111,16 @@ func (h *UserHandler) List(ctx context.Context, req events.APIGatewayProxyReques
 	// equivalent of r.URL.Query().
 	limit, err := pageLimit(req.QueryStringParameters["limit"])
 	if err != nil {
-		return respond(400, map[string]string{"error": err.Error()})
+		return reject(ctx, http.StatusBadRequest, err.Error())
 	}
 
 	// Step 2: fetch one page. An empty cursor starts from the beginning.
 	users, next, err := h.Repo.User.List(ctx, limit, req.QueryStringParameters["cursor"])
 	if err != nil {
-		return respond(500, map[string]string{"error": "failed to list users"})
+		return fail(ctx, http.StatusInternalServerError, "failed to list users", err)
 	}
 
-	return respond(200, listResponse{Users: users, NextCursor: next})
+	return respond(http.StatusOK, listResponse{Users: users, NextCursor: next})
 }
 
 // pageLimit reads ?limit=, falling back to the default when it is missing.
@@ -142,22 +146,22 @@ func (h *UserHandler) Get(ctx context.Context, req events.APIGatewayProxyRequest
 	// the {userID} placeholder in the Terraform route.
 	userID := req.PathParameters["userID"]
 	if userID == "" {
-		return respond(400, map[string]string{"error": "user ID is required"})
+		return reject(ctx, http.StatusBadRequest, "user ID is required")
 	}
 
 	// Step 2: look the user up.
 	user, err := h.Repo.User.GetByID(ctx, userID)
 	if err != nil {
-		return respond(500, map[string]string{"error": "failed to get user"})
+		return fail(ctx, http.StatusInternalServerError, "failed to get user", err)
 	}
 
 	// Step 3: a miss isn't an error in DynamoDB - GetItem just returns nothing,
 	// which the repository surfaces as (nil, nil). Turn that into a 404.
 	if user == nil {
-		return respond(404, map[string]string{"error": "user not found"})
+		return reject(ctx, http.StatusNotFound, "user not found")
 	}
 
-	return respond(200, user)
+	return respond(http.StatusOK, user)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -168,7 +172,7 @@ func (h *UserHandler) Update(ctx context.Context, req events.APIGatewayProxyRequ
 	// Step 1: who to update.
 	userID := req.PathParameters["userID"]
 	if userID == "" {
-		return respond(400, map[string]string{"error": "user ID is required"})
+		return reject(ctx, http.StatusBadRequest, "user ID is required")
 	}
 
 	// Step 2: what to change. The repository refreshes updated_at on its own.
@@ -179,26 +183,26 @@ func (h *UserHandler) Update(ctx context.Context, req events.APIGatewayProxyRequ
 
 	err := json.Unmarshal([]byte(req.Body), &body)
 	if err != nil {
-		return respond(400, map[string]string{"error": "invalid JSON"})
+		return reject(ctx, http.StatusBadRequest, "invalid JSON")
 	}
 
 	// Step 3: validate.
 	if strings.TrimSpace(body.Name) == "" || strings.TrimSpace(body.Email) == "" {
-		return respond(400, map[string]string{"error": "name and email are required"})
+		return reject(ctx, http.StatusBadRequest, "name and email are required")
 	}
 
 	// Step 4: apply it. The repository guards with attribute_exists(user_id), so
 	// an unknown ID won't silently create a half-empty record.
 	user, err := h.Repo.User.Update(ctx, userID, body.Name, body.Email)
 	if err != nil {
-		return respond(500, map[string]string{"error": "failed to update user"})
+		return fail(ctx, http.StatusInternalServerError, "failed to update user", err)
 	}
 	if user == nil {
-		return respond(404, map[string]string{"error": "user not found"})
+		return reject(ctx, http.StatusNotFound, "user not found")
 	}
 
 	// Step 5: return the record as it looks after the update.
-	return respond(200, user)
+	return respond(http.StatusOK, user)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -209,21 +213,21 @@ func (h *UserHandler) Delete(ctx context.Context, req events.APIGatewayProxyRequ
 	// Step 1: the ID comes from the URL - a DELETE has no body either.
 	userID := req.PathParameters["userID"]
 	if userID == "" {
-		return respond(400, map[string]string{"error": "user ID is required"})
+		return reject(ctx, http.StatusBadRequest, "user ID is required")
 	}
 
 	// Step 2: delete. DeleteItem succeeds even for a key that was never there,
 	// so the repository returns the old record - nil means nothing was deleted.
 	user, err := h.Repo.User.Delete(ctx, userID)
 	if err != nil {
-		return respond(500, map[string]string{"error": "failed to delete user"})
+		return fail(ctx, http.StatusInternalServerError, "failed to delete user", err)
 	}
 	if user == nil {
-		return respond(404, map[string]string{"error": "user not found"})
+		return reject(ctx, http.StatusNotFound, "user not found")
 	}
 
 	// Step 3: built directly, not via respond() - a 204 must carry no body.
-	return events.APIGatewayProxyResponse{StatusCode: 204}, nil
+	return events.APIGatewayProxyResponse{StatusCode: http.StatusNoContent}, nil
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -238,10 +242,11 @@ func (h *UserHandler) Echo(ctx context.Context, req events.APIGatewayProxyReques
 	err := json.Unmarshal([]byte(req.Body), &body)
 
 	if err != nil {
-		return respond(400, map[string]string{"error": "invalid request body"})
+		return reject(ctx, http.StatusBadRequest, "invalid request body")
+
 	}
 
-	return respond(200, body)
+	return respond(http.StatusOK, body)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -260,4 +265,33 @@ func respond(status int, body any) (events.APIGatewayProxyResponse, error) {
 		Headers:    map[string]string{"Content-Type": "application/json"},
 		Body:       string(b),
 	}, nil
+}
+
+// logFor returns a logger stamped with this request's ID, so every line from a
+// single request can be found together in CloudWatch. AWS also returns that ID
+// to the caller as the x-amzn-RequestId header, so a user can quote it and we
+// can look up exactly their request.
+func logFor(ctx context.Context) *slog.Logger {
+	lc, ok := lambdacontext.FromContext(ctx)
+	if !ok {
+		// No Lambda context - we are in a test. Log without the ID.
+		return slog.Default()
+	}
+
+	return slog.With("requestId", lc.AwsRequestID)
+}
+
+// reject is for 4xx: the caller sent something we will not accept. Nothing is
+// broken on our side, so it logs at WARN and stays out of the error rate that
+// alarms watch.
+func reject(ctx context.Context, status int, msg string) (events.APIGatewayProxyResponse, error) {
+	logFor(ctx).Warn(msg, "status", status)
+	return respond(status, map[string]string{"error": msg})
+}
+
+// fail is for 5xx: something on our side broke. The caller gets the safe
+// message, CloudWatch gets the real error - without this the cause is lost.
+func fail(ctx context.Context, status int, msg string, err error) (events.APIGatewayProxyResponse, error) {
+	logFor(ctx).Error(msg, "err", err)
+	return respond(status, map[string]string{"error": msg})
 }
