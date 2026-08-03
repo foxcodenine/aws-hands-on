@@ -191,6 +191,25 @@ func TestUpdateReturnsTheUpdatedUser(t *testing.T) {
 	}
 }
 
+func TestUpdateReturns404ForAnUnknownUser(t *testing.T) {
+	// The repository turns a failed attribute_exists guard into (nil, nil), so
+	// this is the same "not found" path Get and Delete take - not a 500.
+	h := newHandler(&fakeDynamo{
+		updateItem: func(*dynamodb.UpdateItemInput) (*dynamodb.UpdateItemOutput, error) {
+			return nil, &types.ConditionalCheckFailedException{}
+		},
+	})
+
+	resp, _ := h.Update(context.Background(), events.APIGatewayProxyRequest{
+		PathParameters: map[string]string{"userID": "never-existed"},
+		Body:           `{"name":"Ada","email":"ada@example.com"}`,
+	})
+
+	if resp.StatusCode != 404 {
+		t.Errorf("StatusCode = %d, want 404", resp.StatusCode)
+	}
+}
+
 func TestDeleteReturns204WithNoBody(t *testing.T) {
 	// 204 means "done, nothing to send back" - a body here would be invalid,
 	// which is why Delete builds its response directly instead of via respond().

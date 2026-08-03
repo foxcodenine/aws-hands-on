@@ -233,7 +233,7 @@ func (h *UserHandler) Delete(ctx context.Context, req events.APIGatewayProxyRequ
 // ---------------------------------------------------------------------------------------------------------------------
 
 // Echo returns whatever JSON it was sent, without touching DynamoDB. Carried
-// over from tutorial 04 to test the wiring; no route points at it.
+// over from tutorial 04 to test the wiring, and still routed as POST /echo.
 func (h *UserHandler) Echo(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 
 	// interface{} accepts any JSON shape, so nothing sent gets dropped.

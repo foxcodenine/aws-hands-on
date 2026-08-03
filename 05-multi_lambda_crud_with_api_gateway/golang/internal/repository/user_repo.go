@@ -3,6 +3,7 @@ package repository
 import (
 	"05-multi_lambda_crud_with_api_gateway/internal/models"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -162,7 +163,8 @@ func (r *UserRepository) QueryByEmail(ctx context.Context, email string) ([]mode
 
 // -----------------------------------------------------------------------------
 
-// Update modifies specific fields on an existing user.
+// Update modifies specific fields on an existing user, returning (nil, nil)
+// when no user has that ID.
 func (r *UserRepository) Update(ctx context.Context, userID string, name string, email string) (*models.User, error) {
 
 	// Build the SET clause with the expression builder instead of hand-writing
@@ -208,7 +210,21 @@ func (r *UserRepository) Update(ctx context.Context, userID string, name string,
 		ReturnValues: types.ReturnValueAllNew,
 	})
 
+	// UpdateItem uses expression.AttributeExists(expression.Name("user_id"))
+	// to prevent DynamoDB from creating a new item when the requested user does not exist.
+	//
+	// Because user_id is the item's partition key, a ConditionalCheckFailedException
+	// here means that no user exists with the supplied ID. Return (nil, nil) to
+	// match the repository's existing "not found" convention.
+	//
+	// Use errors.As because the AWS SDK may wrap the service error.
 	if err != nil {
+		var condFailed *types.ConditionalCheckFailedException
+
+		if errors.As(err, &condFailed) {
+			return nil, nil
+		}
+
 		return nil, fmt.Errorf("failed to update item: %w", err)
 	}
 

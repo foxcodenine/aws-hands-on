@@ -3,7 +3,6 @@ package db
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -12,14 +11,16 @@ import (
 
 // NewClient creates a configured DynamoDB client.
 // It uses the default credential chain (env vars, shared config, IAM role).
-func NewClient(w io.Writer, ctx context.Context) *dynamodb.Client {
+func NewClient(ctx context.Context) (*dynamodb.Client, error) {
 	cfg, err := config.LoadDefaultConfig(
 		ctx,
 		config.WithRegion(getRegion()),
 	)
 
+	// Returned, not logged: main already logs it through slog, and writing here
+	// too would put a second, non-JSON copy on the same stdout stream.
 	if err != nil {
-		fmt.Fprintf(w, "unable to load AWS config:%v", err)
+		return nil, fmt.Errorf("unable to load AWS config: %w", err)
 	}
 
 	// Support endpoint override for local development
@@ -28,10 +29,10 @@ func NewClient(w io.Writer, ctx context.Context) *dynamodb.Client {
 	if endpoint != "" {
 		return dynamodb.NewFromConfig(cfg, func(o *dynamodb.Options) {
 			o.BaseEndpoint = &endpoint
-		})
+		}), nil
 	}
 
-	return dynamodb.NewFromConfig(cfg)
+	return dynamodb.NewFromConfig(cfg), nil
 }
 
 // ---------------------------------------------------------------------

@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"io"
 	"testing"
 )
 
@@ -35,8 +34,11 @@ func TestNewClient(t *testing.T) {
 	t.Run("default endpoint", func(t *testing.T) {
 		t.Setenv("DYNAMODB_ENDPOINT", "")
 
-		got := NewClient(io.Discard, context.Background())
+		got, err := NewClient(context.Background())
 
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if got == nil {
 			t.Fatal("NewClient returned nil")
 		}
@@ -45,8 +47,11 @@ func TestNewClient(t *testing.T) {
 	t.Run("endpoint override", func(t *testing.T) {
 		t.Setenv("DYNAMODB_ENDPOINT", "http://localhost:8000")
 
-		got := NewClient(io.Discard, context.Background())
+		got, err := NewClient(context.Background())
 
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if got == nil {
 			t.Fatal("NewClient returned nil")
 		}

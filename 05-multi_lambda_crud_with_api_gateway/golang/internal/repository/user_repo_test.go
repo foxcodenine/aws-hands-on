@@ -3,6 +3,7 @@ package repository
 import (
 	"05-multi_lambda_crud_with_api_gateway/internal/models"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -209,6 +210,48 @@ func TestUpdateOnlyTouchesUsersThatExist(t *testing.T) {
 		!strings.Contains(*captured.ConditionExpression, "attribute_exists") {
 		t.Errorf("ConditionExpression = %v, want an attribute_exists guard", captured.ConditionExpression)
 	}
+}
+
+func TestUpdateSeparatesMissingUsersFromRealFailures(t *testing.T) {
+	// The attribute_exists guard above fails as an error, not as an empty
+	// result, so both of these arrive at the same `if err != nil`. Only one of
+	// them should turn into a 404.
+
+	t.Run("a failed guard means not found", func(t *testing.T) {
+		fake := &fakeDynamo{
+			updateItem: func(*dynamodb.UpdateItemInput) (*dynamodb.UpdateItemOutput, error) {
+				// What DynamoDB returns for an ID that is not in the table.
+				return nil, &types.ConditionalCheckFailedException{}
+			},
+		}
+		repo := NewUserRepository(fake)
+
+		user, err := repo.Update(context.Background(), "never-existed", "Ada", "ada@example.com")
+
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if user != nil {
+			t.Errorf("expected nil user, got %+v", user)
+		}
+	})
+
+	t.Run("anything else is still an error", func(t *testing.T) {
+		// The half-right version of this fix swallows every error, which would
+		// report a throttled or unreachable table as a clean 404.
+		fake := &fakeDynamo{
+			updateItem: func(*dynamodb.UpdateItemInput) (*dynamodb.UpdateItemOutput, error) {
+				return nil, errors.New("throttled")
+			},
+		}
+		repo := NewUserRepository(fake)
+
+		_, err := repo.Update(context.Background(), "abc-123", "Ada", "ada@example.com")
+
+		if err == nil {
+			t.Fatal("expected the error to propagate, got nil")
+		}
+	})
 }
 
 func TestDeleteReturnsNilWhenThereWasNothingToDelete(t *testing.T) {
