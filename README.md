@@ -18,6 +18,10 @@ Each tutorial lives in a numbered folder (`01-`, `02-`, …) and is self-contain
 
 Each tutorial's `docs/` directory records the learning path. Where the order matters, the walkthrough is numbered under `docs/steps/`; runnable scripts live in `scripts/`.
 
-## CI
+## CI/CD
 
-CI lives in `.github/workflows/`, one file per tutorial. Tutorial 05 also deploys itself: a push to `main` builds the Lambdas and runs `terraform apply`, authenticating with OIDC so there are no AWS keys stored in the repo.
+Pipelines live in `.github/workflows/`, one file per tutorial.
+
+The CI half runs on every push: Go vet, format check, tests and build, plus `terraform fmt`, `validate` and `plan`.
+
+Tutorial 05 goes further and deploys itself — a push to `main` builds the Lambdas and runs `terraform apply` in the same job, authenticating with OIDC so there are no AWS keys stored in the repo. No approval step, so it is continuous *deployment* rather than continuous delivery.
