@@ -50,10 +50,38 @@ jobs:
         run: cd build && tree
 
         
+  terraform:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: 05-multi_lambda_crud_with_api_gateway/terraform
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3 
+
+      - name: Check formatting
+        run: terraform fmt -check
+
+      # -backend=false skips state entirely - this only downloads providers
+      # so validate has schemas to check against.
+      - name: Init
+        run: terraform init -backend=false
+
+      - name: Validate
+        run: terraform validate
+
   terraform-plan:
     runs-on: ubuntu-latest
 
-   
+    # Only worth spending an AWS round-trip once the free checks have passed.
+    needs: [build, terraform]
+
+
     # Allow this job to create an OIDC token and read the repository
     #
     # id-token: write allows GitHub to create the temporary identity token that
