@@ -9,8 +9,23 @@ on:
       - '05-multi_lambda_crud_with_api_gateway/**'
       - '.github/workflows/05-multi_lambda_crud_with_api_gateway.yaml'
 
+# Only one run of this workflow at a time. The second one waits.
+#
+# Without this, pushing twice quickly starts two runs, and both reach terraform apply and fight over the same state file
+# in S3.
+#
+# group is a label. Runs sharing a label queue up behind each other. This label is the workflow name plus the branch, so
+# it means: one at a time on main, and a feature branch never blocks main.
+#
+# cancel-in-progress: false means the second run waits for the first to finish. true would kill the first one instead -
+# fine for a test-only workflow, but not here: killing an apply halfway leaves the state locked and half the Lambdas
+# updated.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  build:
+  go-build:
     runs-on: ubuntu-latest
 
     defaults:
@@ -29,14 +44,12 @@ jobs:
         with:
           go-version-file: 05-multi_lambda_crud_with_api_gateway/golang/go.mod
 
-      # Catches mistakes the compiler allows: wrong Printf verbs, ignored
-      # results, struct tags that do not parse.
+      # Catches mistakes the compiler allows: wrong Printf verbs, ignored results, struct tags that do not parse.
       - name: Vet
         run: go vet ./...
 
-      # gofmt -l lists unformatted files but always exits 0, so it can never
-      # fail a build on its own. test -z fails when that list is not empty,
-      # and the || branch re-runs it so the log names the offending files.
+      # gofmt -l lists unformatted files but always exits 0, so it can never fail a build on its own. test -z fails when
+      # that list is not empty, and the || branch re-runs it so the log names the offending files.
       - name: Check formatting
         run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
 
@@ -50,7 +63,7 @@ jobs:
         run: cd build && tree
 
         
-  terraform:
+  terraform-validate:
     runs-on: ubuntu-latest
 
     defaults:
@@ -62,13 +75,12 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3 
+        uses: hashicorp/setup-terraform@v4
 
       - name: Check formatting
         run: terraform fmt -check
 
-      # -backend=false skips state entirely - this only downloads providers
-      # so validate has schemas to check against.
+      # -backend=false skips state entirely - this only downloads providers so validate has schemas to check against.
       - name: Init
         run: terraform init -backend=false
 
@@ -79,13 +91,13 @@ jobs:
     runs-on: ubuntu-latest
 
     # Only worth spending an AWS round-trip once the free checks have passed.
-    needs: [build, terraform]
+    needs: [go-build, terraform-validate]
 
 
     # Allow this job to create an OIDC token and read the repository
     #
-    # id-token: write allows GitHub to create the temporary identity token that
-    # AWS uses to verify the repository and give the job temporary AWS credentials.
+    # id-token: write allows GitHub to create the temporary identity token that AWS uses to verify
+    # the repository and give the job temporary AWS credentials.
 
     #       GitHub workflow
     #             ↓ creates OIDC token
@@ -120,13 +132,13 @@ jobs:
         working-directory: 05-multi_lambda_crud_with_api_gateway/golang
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::725211237961:role/aws-hands-on-github-actions
           aws-region: eu-west-1
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
 
       # Note: no -backend=false here, unlike the validate job. plan needs the
       # real state out of S3.
@@ -135,3 +147,47 @@ jobs:
 
       - name: Plan
         run: terraform plan -no-color
+
+  terraform-apply:
+    runs-on: ubuntu-latest
+
+    # Only on a push to main. On a branch this job is skipped entirely, which is
+    # belt and braces: the trust policy would refuse the role anyway.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    needs: [go-build, terraform-validate, terraform-plan]
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: 05-multi_lambda_crud_with_api_gateway/golang/go.mod
+
+      # The step that fixes the drift: compiling and applying are now one job,
+      # so the zip can never contain a stale binary.
+      - name: Build binaries
+        run: ./build.sh
+        working-directory: 05-multi_lambda_crud_with_api_gateway/golang
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::725211237961:role/aws-hands-on-github-actions-apply
+          aws-region: eu-west-1
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+
+      - name: Init
+        run: terraform init
+        working-directory: 05-multi_lambda_crud_with_api_gateway/terraform
+
+      - name: Apply
+        run: terraform apply -auto-approve -no-color
+        working-directory: 05-multi_lambda_crud_with_api_gateway/terraform
