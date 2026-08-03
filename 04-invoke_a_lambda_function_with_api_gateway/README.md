@@ -16,7 +16,9 @@ HTTP request → API Gateway → Lambda function → DynamoDB table
 - `node/` — Node.js Lambda source code
 - `golang/` — Go Lambda source code
 - `terraform/` — AWS infrastructure
-- `steps/` — my walkthrough and learning notes
+- `docs/` — my notes:
+  - [`apigateway-tutorial.md`](./docs/apigateway-tutorial.md) — the walkthrough
+  - [`go-setup.md`](./docs/go-setup.md) — the commands that set the Go module up
 
 ## What I want to learn
 

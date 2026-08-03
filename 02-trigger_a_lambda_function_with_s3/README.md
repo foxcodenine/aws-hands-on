@@ -16,11 +16,15 @@ file upload → S3 bucket → Lambda function → CloudWatch Logs
 - `node/` — Node.js Lambda source code
 - `golang/` — Go Lambda source code
 - `terraform/` — AWS infrastructure
-- `steps/` — my walkthrough and learning notes
+- `docs/` — my walkthrough and learning notes
 
 ## Guide
 
-I am building each implementation progressively. The `steps/` folder separates each version of the tutorial.
+I built the same tutorial three ways. Each write-up in `docs/` stands on its own:
+
+- [`python-console.md`](./docs/python-console.md) — Python, from the console
+- [`node-console.md`](./docs/node-console.md) — Node, from the console
+- [`go-with-terraform.md`](./docs/go-with-terraform.md) — Go, deployed with Terraform
 
 ## What I want to learn
 

@@ -46,6 +46,7 @@ The create handler checks whether an email already exists and returns `409 Confl
 - `golang/` — Go source (HTTP server in `cmd/app`, handlers, routers, repository and client in `internal/`)
 - `golang/http/users.http` — REST Client / JetBrains HTTP requests to exercise the API by hand
 - `terraform/` — DynamoDB table infrastructure
+- `docs/` — my notes ([`go-setup.md`](./docs/go-setup.md) — the commands that set the Go module up)
 - `How to Use DynamoDB with Go.pdf` — offline copy of a related reference doc
 
 ## What I want to learn

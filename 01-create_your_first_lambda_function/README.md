@@ -28,10 +28,10 @@ The function takes a JSON payload like `{"length": 5, "width": 3}`, calculates t
 
 ## Steps (Go / CLI path)
 
-The `golang/steps/` folder has the full CLI walkthrough:
+Read the walkthrough in `docs/steps/`, then run the scripts in `scripts/` in order:
 
-1. `01-deploy-lambda-from-aws-dashboard.md` — console deployment guide
-2. `02-create_a_new_user.md` — IAM user + access key setup
-3. `03-create_execution_role_for_lambda.sh` — create the Lambda execution role
-4. `04-create-the-actual-lambda-function.sh` — build, zip, and deploy
-5. `05-invoke-lambda-via-cli.sh` — invoke and see the output
+1. [`docs/steps/01-deploy-lambda-from-aws-dashboard.md`](./docs/steps/01-deploy-lambda-from-aws-dashboard.md) — console deployment guide
+2. [`docs/steps/02-create-a-new-user.md`](./docs/steps/02-create-a-new-user.md) — IAM user + access key setup
+3. [`scripts/01-create-execution-role.sh`](./scripts/01-create-execution-role.sh) — create the Lambda execution role
+4. [`scripts/02-create-lambda-function.sh`](./scripts/02-create-lambda-function.sh) — build, zip, and deploy
+5. [`scripts/03-invoke-lambda.sh`](./scripts/03-invoke-lambda.sh) — invoke and see the output

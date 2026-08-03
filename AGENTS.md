@@ -7,8 +7,11 @@ Hands-on AWS learning — one numbered tutorial folder per topic (`01-`, `02-`, 
 ## Conventions
 
 - Folders are numbered in order: `01-create_your_first_lambda_function/`, next will be `02-…`, etc.
-- Inside each tutorial, scripts and docs go in a `steps/` subdirectory, numbered from `01-`.
-- Source code sits at the top level of its runtime folder (e.g. `golang/main.go`), not inside `steps/`.
+- `README.md` stays at the tutorial root.
+- Tutorial docs live in `docs/`, unnumbered by default.
+- `docs/steps/` with `01-` prefixes is only for a walkthrough that must be followed in order. A number is a promise that order matters — alternatives and reference notes stay unnumbered in `docs/`.
+- Runnable scripts go in `scripts/`, not in `docs/`.
+- Source code sits at the top level of its runtime folder (e.g. `golang/main.go`).
 - Terraform configuration sits in a `terraform/` subdirectory inside the relevant tutorial.
 
 ## AWS / tooling notes
@@ -18,6 +21,12 @@ Hands-on AWS learning — one numbered tutorial folder per topic (`01-`, `02-`, 
 - Terraform uses the `developer` AWS profile and must not commit state files, `.terraform/`, plans, or local `.tfvars` files.
 - Invoking Lambda via CLI requires `--cli-binary-format raw-in-base64-out` for raw JSON payloads.
 - IAM execution role: `lambda-basic-execution` with `AWSLambdaBasicExecutionRole` attached.
+
+## Git
+
+- **Never run `git commit`, `git push`, or create branches.** I do all of that
+  myself. Propose the commits instead: a one-line message plus the files that
+  belong in each, and I will run them.
 
 ## Preferences
 

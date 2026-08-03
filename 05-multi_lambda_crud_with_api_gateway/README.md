@@ -21,7 +21,10 @@ API Gateway (one route per operation)
 - `golang/build.sh` — compiles every folder in `cmd/` into `build/<name>/bootstrap`
 - `golang/http/` — `.http` requests to exercise the deployed API by hand
 - `terraform/` — DynamoDB table, IAM, the Lambdas, and the API Gateway wiring
-- `steps/` — my walkthrough and learning notes
+- `docs/` — my notes:
+  - [`api-gateway.md`](./docs/api-gateway.md) — how API Gateway fits together
+  - [`go-setup.md`](./docs/go-setup.md) — the commands that set the Go module up
+  - [`next-steps.md`](./docs/next-steps.md) — what is built so far, and what is left
 
 ## Deploy
 
