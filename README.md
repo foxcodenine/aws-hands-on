@@ -17,3 +17,7 @@ A collection of hands-on AWS tutorials, one numbered folder per topic.
 Each tutorial lives in a numbered folder (`01-`, `02-`, …) and is self-contained — its own source code, deploy scripts, infrastructure, and notes.
 
 Each tutorial's `docs/` directory records the learning path. Where the order matters, the walkthrough is numbered under `docs/steps/`; runnable scripts live in `scripts/`.
+
+## CI
+
+CI lives in `.github/workflows/`, one file per tutorial. Tutorial 05 also deploys itself: a push to `main` builds the Lambdas and runs `terraform apply`, authenticating with OIDC so there are no AWS keys stored in the repo.

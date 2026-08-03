@@ -30,8 +30,8 @@ trust policy is scoped to this repo.
 Runs against the real S3 state with the OIDC role, so I can see what an apply
 would change. The role is read-only, so plan is as far as it can go.
 
-`needs: [build, terraform]` gates it behind the two free jobs, so a broken build
-never spends an AWS round-trip.
+`needs: [go-build, terraform-validate]` gates it behind the two free jobs, so a
+broken build never spends an AWS round-trip.
 
 **One workflow file per tutorial**
 
@@ -44,6 +44,36 @@ at the repo root, so a tutorial folder is not quite as self-contained as the
 rest of the repo; and `working-directory` is what points them back at the right
 place.
 
+## Pick up here tomorrow
+
+**1. Prove the drift bug is actually dead.** The last untested part of item 2.
+Change something visible in a handler - the `"user not found"` message in
+`user_handler.go` is easiest - commit, push to main, and **do not run
+`./build.sh`**. Then call the endpoint. If the new message comes back, build and
+apply can no longer get out of sync. That is the whole point of the work.
+
+**2. Fix the setup-go cache warning.** Every run logs:
+
+```
+Restore cache failed: Dependencies file is not found in
+/home/runner/work/aws-hands-on/aws-hands-on. Supported file pattern: go.mod
+```
+
+Harmless, but it means the AWS SDK is re-downloaded every run - most of
+`go-build`'s 1m20s. `setup-go` looks for `go.mod` at the repo root to build its
+cache key, and mine is in a subfolder. `go-version-file` does not help; caching
+uses a separate input:
+
+```yaml
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: 05-multi_lambda_crud_with_api_gateway/golang/go.mod
+          cache-dependency-path: 05-multi_lambda_crud_with_api_gateway/golang/go.sum
+```
+
+Needs adding in three places: `go-build`, `terraform-plan` and `terraform-apply`.
+
 ## To do
 
 ### 1. Move the other tutorials to S3 state
@@ -52,7 +82,24 @@ Only 05 is on the S3 backend. 02, 03, 04 and both `00-setup/` folders still keep
 state on disk. Same recipe as 05: add the `backend "s3"` block, then
 `terraform init -migrate-state`.
 
-### 2. apply on merge to main
+### 2. apply on merge to main — ✅ done (2026-08-03)
+
+Kept here rather than moved up, because the reasoning below is the part worth
+re-reading.
+
+What got built:
+
+- `00-setup/github-oidc/iam-apply.tf` — a second role,
+  `aws-hands-on-github-actions-apply`, trusted only from `refs/heads/main`, with
+  write access to Lambda, DynamoDB, API Gateway and logs, plus IAM scoped to
+  names starting `aws-hands-on-`
+- a `terraform-apply` job in the workflow, gated with
+  `if: github.ref == 'refs/heads/main' && github.event_name == 'push'`
+- `concurrency:` at the top of the workflow, so two pushes queue instead of
+  racing for the state lock
+
+Tested in that order: pushed a branch and confirmed `terraform-apply` showed
+**Skipped**, then merged to main and watched it apply for real. Both green.
 
 #### The problem it solves
 
@@ -83,18 +130,18 @@ cannot drift apart. The `terraform-plan` job already has this shape - it builds
 the binaries before Terraform runs, because a fresh runner has no `build/`
 folder.
 
-#### What has to happen first
+#### Why two roles, not one
 
-**The role cannot write.** `aws-hands-on-github-actions` has `ReadOnlyAccess`,
-which is enough for `plan` (it only reads) but not for `apply`, which creates and
-changes Lambdas, IAM, DynamoDB and API Gateway.
+**The original role cannot write.** `aws-hands-on-github-actions` has
+`ReadOnlyAccess`, which is enough for `plan` (it only reads) but not for `apply`,
+which creates and changes Lambdas, IAM, DynamoDB and API Gateway.
 
-**Then: who is allowed to use it.** The trust policy currently accepts
-`repo:foxcodenine/aws-hands-on:*` - any branch. That is fine while the role is
-read-only, but a role that can `apply`, reachable from any branch, means an
-unfinished experiment can change real infrastructure.
+**And who is allowed to use it.** That role's trust policy accepts
+`repo:foxcodenine/aws-hands-on:*` - any branch. Fine while it is read-only, but a
+role that can `apply`, reachable from any branch, means an unfinished experiment
+can change real infrastructure.
 
-Cleaner than tightening the existing role is to have two:
+So rather than tightening the existing role, there are two:
 
 | role  | permissions | who may use it                        |
 | ----- | ----------- | ------------------------------------- |
