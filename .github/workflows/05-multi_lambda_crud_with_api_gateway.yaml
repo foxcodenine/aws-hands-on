@@ -151,9 +151,15 @@ jobs:
   terraform-apply:
     runs-on: ubuntu-latest
 
-    # Only on a push to main. On a branch this job is skipped entirely, which is
+    # Only from main, and only for the two events that mean "deploy": a push, or
+    # the Run workflow button. On a branch this job is skipped entirely, which is
     # belt and braces: the trust policy would refuse the role anyway.
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    #
+    # The brackets are load-bearing. && binds tighter than ||, so writing it flat
+    # would parse as (main && push) || dispatch - and the main-only rule would
+    # then apply to pushes but not to the button, which can be run from any
+    # branch.
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
 
     needs: [go-build, terraform-validate, terraform-plan]
 
