@@ -1,7 +1,7 @@
-@baseUrl = https://98hnnww3eb.execute-api.eu-west-1.amazonaws.com/test
+@baseUrl = https://911q6gf9fh.execute-api.eu-west-1.amazonaws.com/test
 
 # Paste a real user_id here after running the create request below.
-@userID = 1f3e712f-2954-49aa-b7ff-5cbd37efc795
+@userID = 92d05c27-fa67-43db-b4ad-bb569f70c90d
 
 # ----------------------------------------------------------------------------------------------------------------------
 ### Echo - checks API Gateway reaches a Lambda at all, without touching DynamoDB
@@ -55,7 +55,7 @@ GET {{baseUrl}}/users?limit=1
 
 # ----------------------------------------------------------------------------------------------------------------------
 ### Next page - paste the next_cursor from the response above
-GET {{baseUrl}}/users?limit=1&cursor=1f3e712f-2954-49aa-b7ff-5cbd37efc795
+GET {{baseUrl}}/users?limit=1&cursor=92d05c27-fa67-43db-b4ad-bb569f70c90d
 
 # ----------------------------------------------------------------------------------------------------------------------
 ### Bad page size - expect 400

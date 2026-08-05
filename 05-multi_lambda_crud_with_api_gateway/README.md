@@ -28,8 +28,11 @@ API Gateway (one route per operation)
 
 ## Deploy
 
-Pushing to `main` deploys. The workflow builds the binaries and runs
-`terraform apply` in the same job, so the zip can never contain stale code.
+Deploying is manual: **Run workflow** on `main`, from the Actions tab. A push
+builds, tests and plans, but stops before touching AWS.
+
+The workflow builds the binaries and runs `terraform apply` in the same job, so
+the zip can never contain stale code.
 
 To apply by hand — Terraform zips the binaries but does **not** compile Go, so
 always build first:

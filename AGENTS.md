@@ -27,7 +27,7 @@ Hands-on AWS learning — one numbered tutorial folder per topic (`01-`, `02-`, 
 ## CI/CD
 
 - Workflows live in `.github/workflows/`, one file per tutorial, each with a `paths:` filter so it only runs for its own folder.
-- **Pushing to `main` deploys tutorial 05.** The workflow builds the Go binaries and runs `terraform apply -auto-approve` in the same job — that pairing is deliberate, since Terraform zips the binaries but never compiles them. Any push touching `05-multi_lambda_crud_with_api_gateway/**` changes real AWS resources.
+- **Deploying tutorial 05 is manual** — the `workflow_dispatch` button on `main`. A push runs build, validate and plan only, and never changes AWS. The apply job builds the Go binaries and runs `terraform apply -auto-approve` in the same job — that pairing is deliberate, since Terraform zips the binaries but never compiles them.
 - Auth is OIDC — no AWS keys in the repo. Two roles, both in `00-setup/github-oidc/`: `aws-hands-on-github-actions` (read-only, any branch, used by plan) and `aws-hands-on-github-actions-apply` (write, `refs/heads/main` only).
 - Current state of the work and what is planned next: `05-multi_lambda_crud_with_api_gateway/docs/next-steps.md`.
 
