@@ -43,7 +43,7 @@ resource "aws_iam_openid_connect_provider" "github" {
 }
 
 # ------------------------------------------------------------------------------
-# 3. Create the IAM role used by GitHub Actions
+# 3. Create the IAM role used by GitHub Actions - this role can only read
 #
 # A GitHub Actions workflow will temporarily assume this role.
 #

@@ -24,25 +24,42 @@ API Gateway (one route per operation)
 - `docs/` — my notes:
   - [`api-gateway.md`](./docs/api-gateway.md) — how API Gateway fits together
   - [`go-setup.md`](./docs/go-setup.md) — the commands that set the Go module up
-  - [`next-steps.md`](./docs/next-steps.md) — what is built so far, and what is left
+  - [`next-steps.md`](./docs/next-steps.md) — what is left to do
 
 ## Deploy
 
-Deploying is manual: **Run workflow** on `main`, from the Actions tab. A push
-builds, tests and plans, but stops before touching AWS.
+When pushed to GitHub, nothing deploys on its own.
+A push only builds, tests and plans — it never touches AWS. To deploy, I press a button.
 
-The workflow builds the binaries and runs `terraform apply` in the same job, so
-the zip can never contain stale code.
+### From GitHub
 
-To apply by hand — Terraform zips the binaries but does **not** compile Go, so
-always build first:
+The normal route to deploy is from the **Run workflow** button on `main`, in the Actions tab.
+
+One job compiles the binaries and then applies, so it cannot forget the build
+step.
+
+Pushing code and deploying infrastructure are two separate decisions. A
+documentation change or an unfinished commit cannot modify AWS on its own.
+
+### By hand
+
+First compile the Go lambdas.
+Then run `terraform apply` to zip the Lambda binaries and apply everything to AWS.
 
 ```bash
 cd golang && ./build.sh
 cd ../terraform && terraform apply
 ```
 
-`terraform output invoke_url` gives the base URL for `golang/http/users.http`.
+If `build.sh` is skipped, Terraform zips the old binary, sees nothing new, and prints
+`No changes`. The deploy looks fine and ships nothing.
+
+The base URL for `golang/http/users.http`:
+
+```bash
+export AWS_PROFILE=developer   # the profile is commented out for CI
+terraform output -raw invoke_url
+```
 
 ## Test the Go code
 
@@ -81,73 +98,190 @@ go test ./internal/api/ -coverprofile=cover.out && go tool cover -html=cover.out
 
 The tests cover the parts most likely to break quietly: a missing item returning 404 rather than an empty 200, duplicate emails being rejected *before* the write, pagination cursors round-tripping, and `DELETE` answering 204 with no body. `cmd/` has no tests — those files are three-line `main()`s.
 
-## What I want to learn
+## The workflow
 
-- How to structure a Go repo with multiple Lambda entrypoints sharing common internal packages
-- How Terraform scales once there are several Lambda functions instead of one — repeated resource blocks vs. `for_each`
-- How API Gateway maps several routes to several different Lambda integrations
-- Trade-offs between one monolithic Lambda (04) and many single-purpose Lambdas (05) — cold starts, deployment size, IAM blast radius, and how much shared code actually makes sense to factor out
-
-## What tripped me up
-
-### `403 Missing Authentication Token` means the route does not exist
-
-Nothing to do with authentication, even though every method here uses
-`authorization = "NONE"`. API Gateway returns this for *any* path it cannot
-match. I had requested `/test/test`, because I forgot the `/test` already in the
-base URL is the **stage name**, not part of the path.
-
-Rule of thumb: 403 means the route is wrong, 500 means the route was found and
-something behind it failed.
-
-### `terraform apply` does not compile Go
-
-I changed the Go source, ran `apply`, and got "no changes". The old binary stayed
-live, still querying a table that no longer existed.
-
-Terraform only zips what is already on disk. `source_code_hash` notices when the
-*zip* changes, and the zip only changes once `build.sh` has run. So the order is
-always `./build.sh` first, `terraform apply` second.
-
-### The handlers throw away the real error
-
-A `500 {"error":"failed to check email"}` left nothing in CloudWatch but
-`START`/`END`/`REPORT`, so the cause had to be worked out from the outside.
-
-The handler returns a generic message — which is right, callers should not see
-internals — but it never logs `err` first, so the detail is lost entirely. One
-`log.Printf` before each error response would have named the problem straight
-away.
-
-### `PUT` on a missing user returns 500, not 404
-
-The repository guards `UpdateItem` with `attribute_exists(user_id)`. When the
-user does not exist, DynamoDB rejects the write with
-`ConditionalCheckFailedException` — an **error**, not an empty result. So the
-handler takes its `err != nil` branch and returns 500, and the `user == nil`
-branch that would return 404 is unreachable.
-
-`DELETE` does not have this problem: it genuinely returns `(nil, nil)` when there
-was nothing to delete. Still to fix.
-
-### In a `.http` file, the body runs until the next `###`
-
-I put a variable directly under a request and the request stopped working. The
-reason is that everything after the blank line, all the way to the next `###`,
-counts as the body:
-
-```
-POST {{baseUrl}}/users
-Content-Type: application/json
-                              <- blank line: headers end, body starts
-{
-  "name": "Ada Lovelace"
-}
-@userID = abc-123             <- still the body, not a variable
-                              
-### Next request              <- only here does the body end
+```text
+.github/workflows/05-multi_lambda_crud_with_api_gateway.yaml
 ```
 
-So the Lambda received the JSON *plus* `@userID = abc-123` stuck on the end,
-which is not valid JSON — hence `400 invalid JSON`. Variables have to go at the
-top of the file, above every request.
+Four jobs. The first two need no AWS credentials at all.
+
+### Go checks
+
+```bash
+go vet ./...
+gofmt check
+go test -race ./...
+./build.sh
+```
+
+The tests use a fake DynamoDB client, so they run offline.
+
+### Terraform checks
+
+```bash
+terraform fmt -check
+terraform init -backend=false
+terraform validate
+```
+
+`-backend=false` skips the state entirely. This only downloads the providers and
+checks the configuration against them.
+
+### Terraform plan
+
+Runs against the real S3 state using the read-only IAM role, so this job does
+need AWS credentials.
+
+It waits for the two free jobs, so a broken build never spends an AWS
+round-trip:
+
+```yaml
+needs:
+  - go-build
+  - terraform-validate
+```
+
+### Terraform apply
+
+The only job that changes AWS. It uses the apply role, and runs from the **Run
+workflow** button on `main`:
+
+```yaml
+if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
+```
+
+The branch check matters because the button lets you pick any branch from a
+dropdown. Only `main` may apply.
+
+It compiles and applies in the same job:
+
+```bash
+./build.sh
+terraform apply -auto-approve
+```
+
+Terraform zips binaries but never compiles them, so the two steps must stay
+together. A job cannot forget the build.
+
+It runs last:
+
+```yaml
+needs:
+  - go-build
+  - terraform-validate
+  - terraform-plan
+```
+
+## IAM roles
+
+The workflow uses two roles, never one.
+
+| Role | Permissions | Allowed branches |
+|---|---|---|
+| Plan role | Read-only | Any branch |
+| Apply role | Write access | `main` only |
+
+### Plan role
+
+Uses AWS `ReadOnlyAccess`. Terraform plan only needs to:
+
+- Read the current AWS resources
+- Read the remote Terraform state
+- Compare the current infrastructure with the configuration
+
+It does not need permission to create or update anything.
+
+Its trust policy allows any branch in the repository:
+
+```text
+repo:foxcodenine/aws-hands-on:*
+```
+
+That is acceptable precisely because the role can only read.
+
+### Apply role
+
+Can create and update:
+
+- Lambda functions
+- DynamoDB tables
+- API Gateway resources
+- CloudWatch log resources
+
+Its trust policy allows one branch only:
+
+```text
+refs/heads/main
+```
+
+Its permissions are also limited to resources whose names start with
+`aws-hands-on-`. It is defined in `00-setup/github-oidc/iam-apply.tf`.
+
+### Why two roles, not one
+
+Separate roles keep broad branch access and write permissions apart.
+
+Pull requests and experimental branches can inspect infrastructure changes, but
+they cannot modify AWS.
+
+## Supporting setup
+
+### Remote Terraform state
+
+Tutorial 05 stores its Terraform state in S3, not only on my laptop:
+
+```text
+aws-hands-on-tfstate-725211237961
+```
+
+The backend uses:
+
+```hcl
+use_lockfile = true
+```
+
+This prevents two Terraform operations from modifying the state at the same
+time, so a separate DynamoDB locking table is not required.
+
+The existing local state was moved with:
+
+```bash
+terraform init -migrate-state
+```
+
+### GitHub OIDC authentication
+
+OIDC lets GitHub Actions assume AWS IAM roles without permanent access keys, so
+there are no AWS credentials stored in repository secrets.
+
+The infrastructure is in `00-setup/github-oidc/` and contains:
+
+- One GitHub OIDC provider for the AWS account
+- A read-only plan role
+- A restricted apply role
+
+### Workflow concurrency
+
+The workflow has a top-level `concurrency` configuration, so two runs cannot race
+each other. One waits for the other to finish.
+
+### Go module caching
+
+GitHub Actions originally displayed:
+
+```text
+Dependencies file is not found
+```
+
+The Go module is inside a tutorial subfolder rather than at the repository root.
+`go-version-file` selects the Go version, but it does not tell `setup-go` where
+the dependency file is. Caching needs its own input:
+
+```yaml
+go-version-file: 05-multi_lambda_crud_with_api_gateway/golang/go.mod
+cache-dependency-path: 05-multi_lambda_crud_with_api_gateway/golang/go.sum
+```
+
+Added to every job that installs Go. This avoids re-downloading the AWS SDK on
+every run.

@@ -17,6 +17,14 @@ terraform {
       version = "~> 6.0"
     }
   }
+
+    backend "s3" {
+    bucket = "aws-hands-on-tfstate-725211237961"
+    key    = "03-dynamodb_crud_with_go/terraform.tfstate"
+    region = "eu-west-1"
+    profile      = "developer"
+    use_lockfile = true
+  }
 }
 
 provider "aws" {

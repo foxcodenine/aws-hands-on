@@ -40,10 +40,24 @@ jobs:
       - name: Printing Folder
         run: ls
 
+      # Two paths, doing two different jobs:
+      #
+      #   go-version-file        which Go version to install
+      #   cache-dependency-path  which file to hash for the cache key
+      #
+      # If that hash is the same as last run, the dependencies have not changed,
+      # so the modules downloaded last time are reused instead of fetched again.
+      # go.sum is the right file to hash because it changes exactly when a
+      # dependency does.
+      #
+      # Caching looks for go.mod in the repo root by default. Mine is in a
+      # subfolder, so without the second line setup-go finds nothing, warns
+      # "Dependencies file is not found", and re-downloads the AWS SDK every run.
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
           go-version-file: 05-multi_lambda_crud_with_api_gateway/golang/go.mod
+          cache-dependency-path: 05-multi_lambda_crud_with_api_gateway/golang/go.sum
 
       # Catches mistakes the compiler allows: wrong Printf verbs, ignored results, struct tags that do not parse.
       - name: Vet
@@ -126,6 +140,7 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version-file: 05-multi_lambda_crud_with_api_gateway/golang/go.mod
+          cache-dependency-path: 05-multi_lambda_crud_with_api_gateway/golang/go.sum
 
       - name: Build binaries
         run: ./build.sh
@@ -178,6 +193,7 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version-file: 05-multi_lambda_crud_with_api_gateway/golang/go.mod
+          cache-dependency-path: 05-multi_lambda_crud_with_api_gateway/golang/go.sum
 
       # The step that fixes the drift: compiling and applying are now one job,
       # so the zip can never contain a stale binary.

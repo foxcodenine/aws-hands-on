@@ -1,188 +1,105 @@
-# Next steps
+# Tutorial 05 — next steps
 
-What I have built so far around tutorial 05, and what is left.
+What is left to do. Everything already built is in the [README](../README.md).
 
-## Done
+## 1. Add a CloudWatch Lambda error alarm
 
-**CI on every push** — `.github/workflows/05-multi_lambda_crud_with_api_gateway.yaml`
+Lambda automatically publishes an `Errors` metric.
 
-- Go: `go vet`, `gofmt` check, `go test -race`, `./build.sh`
-- Terraform: `fmt -check`, `init -backend=false`, `validate`
+I can create:
 
-None of that needs AWS credentials: the Go tests use a fake DynamoDB client, and
-`validate` only needs the providers downloaded.
+- An `aws_cloudwatch_metric_alarm`
+- An SNS topic
+- An email subscription
 
-**Remote state in S3** — `terraform/providers.tf`
+This would notify me when Lambda functions start returning unexpected errors.
 
-State for 05 lives in `aws-hands-on-tfstate-725211237961` instead of on my
-laptop. `use_lockfile = true` stops two runs applying at once, so no separate
-DynamoDB lock table is needed. Moving existing state across was
-`terraform init -migrate-state`.
+The handlers already distinguish between:
 
-**OIDC** — `00-setup/github-oidc/`
-
-GitHub Actions assumes an IAM role directly, so there are no AWS keys sitting in
-repo secrets. One identity provider for the whole account, plus a role whose
-trust policy is scoped to this repo.
-
-**terraform plan in CI**
-
-Runs against the real S3 state with the OIDC role, so I can see what an apply
-would change. The role is read-only, so plan is as far as it can go.
-
-`needs: [go-build, terraform-validate]` gates it behind the two free jobs, so a
-broken build never spends an AWS round-trip.
-
-**One workflow file per tutorial**
-
-Rather than one clever file for all of them. The tutorials are not uniform — 01
-has no Terraform, 03 has no `build.sh` — so a shared workflow would need
-conditionals. A `paths:` filter keeps each workflow to its own folder.
-
-Two things I learnt doing it: workflow files must live in `.github/workflows/`
-at the repo root, so a tutorial folder is not quite as self-contained as the
-rest of the repo; and `working-directory` is what points them back at the right
-place.
-
-## Pick up here tomorrow
-
-**1. Prove the drift bug is actually dead.** The last untested part of item 2.
-Change something visible in a handler - the `"user not found"` message in
-`user_handler.go` is easiest - commit, push to main, and **do not run
-`./build.sh`**. Then call the endpoint. If the new message comes back, build and
-apply can no longer get out of sync. That is the whole point of the work.
-
-**2. Fix the setup-go cache warning.** Every run logs:
-
-```
-Restore cache failed: Dependencies file is not found in
-/home/runner/work/aws-hands-on/aws-hands-on. Supported file pattern: go.mod
+```text
+reject → expected client error, such as HTTP 4xx
+fail   → unexpected server error, such as HTTP 5xx
 ```
 
-Harmless, but it means the AWS SDK is re-downloaded every run - most of
-`go-build`'s 1m20s. `setup-go` looks for `go.mod` at the repo root to build its
-cache key, and mine is in a subfolder. `go-version-file` does not help; caching
-uses a separate input:
+This distinction is important.
 
-```yaml
-      - name: Setup Go
-        uses: actions/setup-go@v7
-        with:
-          go-version-file: 05-multi_lambda_crud_with_api_gateway/golang/go.mod
-          cache-dependency-path: 05-multi_lambda_crud_with_api_gateway/golang/go.sum
+Expected user errors should not trigger operational alarms. Otherwise, the alarm would fire too often and become easy to ignore.
+
+---
+
+## 2. Set CloudWatch log retention
+
+The Lambda log groups are currently created automatically by AWS.
+
+By default:
+
+- Logs never expire.
+- Terraform does not manage the log groups.
+- `terraform destroy` may leave the log groups behind.
+
+I should declare each log group in Terraform:
+
+```hcl
+resource "aws_cloudwatch_log_group" "example" {
+  name              = "/aws/lambda/example"
+  retention_in_days = 14
+}
 ```
 
-Needs adding in three places: `go-build`, `terraform-plan` and `terraform-apply`.
+This gives Terraform control over the log groups and prevents logs from being stored forever.
 
-## To do
+---
 
-### 1. Move the other tutorials to S3 state
+## 3. Enable AWS X-Ray tracing
 
-Only 05 is on the S3 backend. 02, 03, 04 and both `00-setup/` folders still keep
-state on disk. Same recipe as 05: add the `backend "s3"` block, then
-`terraform init -migrate-state`.
+CloudWatch logs explain what happened.
 
-### 2. apply on merge to main — ✅ done (2026-08-03)
+X-Ray helps show where request time was spent.
 
-Kept here rather than moved up, because the reasoning below is the part worth
-re-reading.
+Example:
 
-What got built:
-
-- `00-setup/github-oidc/iam-apply.tf` — a second role,
-  `aws-hands-on-github-actions-apply`, trusted only from `refs/heads/main`, with
-  write access to Lambda, DynamoDB, API Gateway and logs, plus IAM scoped to
-  names starting `aws-hands-on-`
-- a `terraform-apply` job in the workflow, gated with
-  `if: github.ref == 'refs/heads/main' && github.event_name == 'push'`
-- `concurrency:` at the top of the workflow, so two pushes queue instead of
-  racing for the state lock
-
-Tested in that order: pushed a branch and confirmed `terraform-apply` showed
-**Skipped**, then merged to main and watched it apply for real. Both green.
-
-#### The problem it solves
-
-Terraform **zips** my Go binaries, it never **compiles** them. `lambda.tf` points
-`archive_file` at `golang/build/<name>/bootstrap`, and that file only exists
-because `build.sh` put it there.
-
-So deploying is two commands, in this order:
-
-```bash
-./build.sh          # compile
-terraform apply     # zip and upload
+```text
+API Gateway      5 ms
+Lambda         420 ms
+Cold start     380 ms
+DynamoDB        28 ms
 ```
 
-Forget the first one and this happens:
+To enable it, the Lambda requires:
 
-1. I edit a handler
-2. I run `terraform apply`
-3. Terraform zips the *old* `bootstrap` - unchanged
-4. `source_code_hash` is identical, so Terraform reports **"no changes"**
-5. My edit never reaches AWS, and the stale binary keeps serving
-
-That is exactly what bit me: apply said everything was fine while the deployed
-code was querying a table that no longer existed.
-
-A workflow cannot forget a step. If CI runs both commands on every merge, they
-cannot drift apart. The `terraform-plan` job already has this shape - it builds
-the binaries before Terraform runs, because a fresh runner has no `build/`
-folder.
-
-#### Why two roles, not one
-
-**The original role cannot write.** `aws-hands-on-github-actions` has
-`ReadOnlyAccess`, which is enough for `plan` (it only reads) but not for `apply`,
-which creates and changes Lambdas, IAM, DynamoDB and API Gateway.
-
-**And who is allowed to use it.** That role's trust policy accepts
-`repo:foxcodenine/aws-hands-on:*` - any branch. Fine while it is read-only, but a
-role that can `apply`, reachable from any branch, means an unfinished experiment
-can change real infrastructure.
-
-So rather than tightening the existing role, there are two:
-
-| role  | permissions | who may use it                        |
-| ----- | ----------- | ------------------------------------- |
-| plan  | read-only   | any branch, so PRs can show a diff    |
-| apply | write       | `main` only                           |
-
-That keeps the permissive trust and the dangerous permissions off the same role.
-
-### 3. CloudWatch alarm on the error rate
-
-Get told when something breaks, instead of finding out by calling the API.
-Lambda publishes an `Errors` metric on its own — no code needed — so this is an
-`aws_cloudwatch_metric_alarm` plus an SNS topic with my email on it.
-
-Worth doing now that the handlers split `reject` (4xx, logged WARN) from `fail`
-(5xx, logged ERROR). An alarm is only useful if ERROR means something is really
-wrong — if bad user input counted, it would fire constantly and I would learn to
-ignore it.
-
-### 4. Log group retention
-
-The six Lambdas have no `aws_cloudwatch_log_group` in Terraform, so AWS creates
-them automatically with **never expire**, and `terraform destroy` leaves them
-behind. Declaring them with `retention_in_days` is a few lines.
-
-### 5. X-Ray tracing
-
-Shows where the *time* goes, rather than why something failed:
-
-```
-API Gateway    5ms
-  Lambda     420ms   (cold start 380ms)
-    DynamoDB  28ms
+```hcl
+tracing_config {
+  mode = "Active"
+}
 ```
 
-Needs `tracing_config { mode = "Active" }` on the Lambda plus
-`xray:PutTraceSegments` in the IAM policy. Low value at this size — one Lambda
-and one table makes a shallow trace — but worth seeing once.
+The IAM role also needs permission such as:
 
-## Later, not now
+```text
+xray:PutTraceSegments
+xray:PutTelemetryRecords
+```
 
-**Modules.** Extracting the repeated "Lambda + IAM role + permission" pattern
-into a reusable module. Commonly asked about in interviews, and the same
-abstraction instinct as any other code. Parking it until the above is done.
+X-Ray has limited value for this small project because each request currently uses only one Lambda and one DynamoDB table.
+
+It is still useful to implement once for learning and interview preparation.
+
+---
+
+## Later
+
+### Terraform modules
+
+The Lambda resources currently repeat the same pattern:
+
+- Lambda function
+- IAM role
+- IAM policy
+- API Gateway permission
+- CloudWatch configuration
+
+This could later be extracted into a reusable Terraform module.
+
+Modules reduce duplication and create a consistent interface for deploying new Lambda functions.
+
+I am leaving this until the more important deployment, monitoring and state-management work is complete.

@@ -158,7 +158,7 @@ func (h *UserHandler) Get(ctx context.Context, req events.APIGatewayProxyRequest
 	// Step 3: a miss isn't an error in DynamoDB - GetItem just returns nothing,
 	// which the repository surfaces as (nil, nil). Turn that into a 404.
 	if user == nil {
-		return reject(ctx, http.StatusNotFound, "user not found v2")
+		return reject(ctx, http.StatusNotFound, "user not found")
 	}
 
 	return respond(http.StatusOK, user)
